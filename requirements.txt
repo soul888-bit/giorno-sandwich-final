@@ -1,8 +1,7 @@
-requirements.txt
-python-telegram-bot==20.3
+python-dotenv
 aiohttp
 nest_asyncio
-python-dotenv
-fastapi
 uvicorn
-certifi
+fastapi
+python-telegram-bot==20.7
+
