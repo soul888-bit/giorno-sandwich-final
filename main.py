@@ -42,7 +42,7 @@ async def send_alert(message: str):
         }
         await session.post(url, json=payload)
 
-# FastAPI app (🔧 nom corrigé)
+# FastAPI app 
 api = FastAPI()
 
 @api.post("/webhook")
