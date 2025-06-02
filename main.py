@@ -45,7 +45,8 @@ async def send_alert(message: str):
         await session.post(url, json=payload)
 
 # FastAPI app
-api = FastAPI()
+app = FastAPI()
+
 
 @api.post("/webhook")
 async def webhook_listener(request: Request):
