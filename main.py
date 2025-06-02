@@ -31,18 +31,7 @@ watched_tokens = {}
 SELECTING_SETTING = 0
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 
-# Fonction d'envoi d’alerte Telegram
-async def send_alert(message: str):
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
-        await session.post(url, json=payload)
-
-# --------------------- FASTAPI APP ---------------------
+# FastAPI app
 api = FastAPI()
 
 @api.post("/webhook")
@@ -64,7 +53,18 @@ async def webhook_listener(request: Request):
                     await send_alert(message)
     return JSONResponse(content={"status": "ok"})
 
-# --------------------- SIMULATION ---------------------
+# Fonction d’envoi d’alerte Telegram
+async def send_alert(message: str):
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        await session.post(url, json=payload)
+
+# Simulation
 async def simulate_sandwich_trading():
     while True:
         await asyncio.sleep(30)
@@ -78,15 +78,10 @@ async def simulate_sandwich_trading():
                     )
                     await send_alert(message)
 
-# --------------------- TELEGRAM BOT ---------------------
-from telegram.ext import Application
-
-telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-# Fonctions Telegram
+# Handlers Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        *[[InlineKeyboardButton(f"{token} : {'ON' if info['active'] else 'OFF'}", callback_data=f"toggle_{token}")
+        *[[InlineKeyboardButton(f"{token} : {'ON' if info['active'] else 'OFF'}", callback_data=f"toggle_{token}")]
           for token, info in watched_tokens.items()],
         [InlineKeyboardButton("Pause All", callback_data="pause_all"), InlineKeyboardButton("Resume All", callback_data="resume_all")],
         [InlineKeyboardButton("/settings", callback_data="settings")]
@@ -184,7 +179,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text)
 
-# Ajout des handlers
+# Application Telegram
+telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
 conv_handler = ConversationHandler(
     entry_points=[
         CommandHandler("start", start),
@@ -209,7 +206,6 @@ telegram_app.add_handler(CallbackQueryHandler(toggle_token, pattern="^toggle_"))
 telegram_app.add_handler(CallbackQueryHandler(pause_all, pattern="^pause_all$"))
 telegram_app.add_handler(CallbackQueryHandler(resume_all, pattern="^resume_all$"))
 
-# --------------------- MAIN ---------------------
 nest_asyncio.apply()
 
 async def main():
@@ -222,6 +218,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
- 
