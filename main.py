@@ -31,9 +31,7 @@ watched_tokens = {}
 SELECTING_SETTING = 0
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 
-# ... (toutes les fonctions Telegram existantes sont inchangées)
-
-# Fonction d'envoi d'alerte Telegram
+# Fonction d'envoi d’alerte Telegram
 async def send_alert(message: str):
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -44,11 +42,10 @@ async def send_alert(message: str):
         }
         await session.post(url, json=payload)
 
-# FastAPI app
-app = FastAPI()
+# FastAPI app (🔧 nom corrigé)
+api = FastAPI()
 
-
-@app.post("/webhook")
+@api.post("/webhook")
 async def webhook_listener(request: Request):
     body = await request.json()
     print("📥 Webhook reçu :", json.dumps(body, indent=2))
@@ -81,7 +78,7 @@ async def simulate_sandwich_trading():
                     )
                     await send_alert(message)
 
-# Telegram App
+# Telegram Bot app
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 conv_handler = ConversationHandler(
@@ -114,10 +111,11 @@ async def main():
     print("✅ Giorno Sandwich Bot & Webhook démarrés")
     asyncio.create_task(simulate_sandwich_trading())
     asyncio.create_task(app.run_polling())
-    config = uvicorn.Config(api, host="0.0.0.0", port=8000, loop="asyncio")
+    config = uvicorn.Config(api, host="0.0.0.0", port=8000, loop="asyncio")  # ← use `api` ici
     server = uvicorn.Server(config)
     await server.serve()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
  
