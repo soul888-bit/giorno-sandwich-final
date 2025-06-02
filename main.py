@@ -42,7 +42,7 @@ async def send_alert(message: str):
         }
         await session.post(url, json=payload)
 
-# FastAPI app 
+# --------------------- FASTAPI APP ---------------------
 api = FastAPI()
 
 @api.post("/webhook")
@@ -64,7 +64,7 @@ async def webhook_listener(request: Request):
                     await send_alert(message)
     return JSONResponse(content={"status": "ok"})
 
-# Simulation
+# --------------------- SIMULATION ---------------------
 async def simulate_sandwich_trading():
     while True:
         await asyncio.sleep(30)
@@ -78,9 +78,113 @@ async def simulate_sandwich_trading():
                     )
                     await send_alert(message)
 
-# Telegram Bot app
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+# --------------------- TELEGRAM BOT ---------------------
+from telegram.ext import Application
 
+telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+# Fonctions Telegram
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        *[[InlineKeyboardButton(f"{token} : {'ON' if info['active'] else 'OFF'}", callback_data=f"toggle_{token}")
+          for token, info in watched_tokens.items()],
+        [InlineKeyboardButton("Pause All", callback_data="pause_all"), InlineKeyboardButton("Resume All", callback_data="resume_all")],
+        [InlineKeyboardButton("/settings", callback_data="settings")]
+    ]
+    await update.message.reply_text("🎛 Menu principal :", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton(f"Slippage max : {user_settings['slippage']}%", callback_data="slippage")],
+        [InlineKeyboardButton(f"Mise fixe : {user_settings['bet']} SOL", callback_data="bet")],
+        [InlineKeyboardButton(f"Swap min : {user_settings['min_swap']} SOL", callback_data="min_swap")],
+        [InlineKeyboardButton(f"Profit min : {user_settings['min_profit']} $", callback_data="min_profit")],
+        [InlineKeyboardButton(f"Priority fee : {user_settings['priority_fee']} SOL", callback_data="priority_fee")]
+    ]
+    if update.callback_query:
+        await update.callback_query.edit_message_text("Réglages :", reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text("Réglages :", reply_markup=InlineKeyboardMarkup(keyboard))
+    return SELECTING_SETTING
+
+async def setting_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data['setting_to_change'] = query.data
+    messages = {
+        "slippage": "Changer le slippage max (%) :",
+        "bet": "Changer la mise fixe (SOL) :",
+        "min_swap": "Changer le montant min d’un swap ciblé (SOL) :",
+        "min_profit": "Changer le profit net minimum ($) :",
+        "priority_fee": "Changer la priority fee (SOL) :"
+    }
+    await query.edit_message_text(messages[query.data])
+    return SELECTING_SETTING
+
+async def set_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    key = context.user_data.get('setting_to_change')
+    value = update.message.text
+    try:
+        user_settings[key] = float(value)
+        await update.message.reply_text(f"✅ Réglage modifié : {key} = {value}")
+    except ValueError:
+        await update.message.reply_text("❌ Entrée invalide.")
+    return ConversationHandler.END
+
+async def add_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage : /add <token_address>")
+        return
+    token = context.args[0]
+    watched_tokens[token] = {"active": True}
+    await update.message.reply_text(f"✅ Token ajouté à la surveillance : {token}")
+
+async def delete_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage : /delete <token_address>")
+        return
+    token = context.args[0]
+    if token in watched_tokens:
+        del watched_tokens[token]
+        await update.message.reply_text(f"🗑 Token supprimé : {token}")
+    else:
+        await update.message.reply_text("❌ Token non trouvé.")
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    watched_tokens.clear()
+    await update.message.reply_text("🔁 Surveillance réinitialisée.")
+
+async def toggle_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    token = update.callback_query.data.replace("toggle_", "")
+    if token in watched_tokens:
+        watched_tokens[token]["active"] = not watched_tokens[token]["active"]
+        await update.callback_query.answer(f"{token} {'activé' if watched_tokens[token]['active'] else 'désactivé'}")
+    await start(update, context)
+
+async def pause_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    for token in watched_tokens:
+        watched_tokens[token]["active"] = False
+    await update.callback_query.answer("⏸ Tous les tokens mis en pause")
+    await start(update, context)
+
+async def resume_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    for token in watched_tokens:
+        watched_tokens[token]["active"] = True
+    await update.callback_query.answer("▶️ Tous les tokens réactivés")
+    await start(update, context)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "/start – Menu principal (affiche les tokens)\n"
+        "/add <token_address> – Ajouter un token\n"
+        "/delete <token_address> – Supprimer un token\n"
+        "/reset – Supprimer tous les tokens surveillés\n"
+        "/settings – Modifier les paramètres (slippage, mise, etc.)\n"
+        "/help – Affiche ce message d'aide"
+    )
+    await update.message.reply_text(help_text)
+
+# Ajout des handlers
 conv_handler = ConversationHandler(
     entry_points=[
         CommandHandler("start", start),
@@ -95,27 +199,29 @@ conv_handler = ConversationHandler(
     fallbacks=[]
 )
 
-app.add_handler(conv_handler)
-app.add_handler(CommandHandler("add", add_token))
-app.add_handler(CommandHandler("delete", delete_token))
-app.add_handler(CommandHandler("reset", reset))
-app.add_handler(CommandHandler("settings", settings))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CallbackQueryHandler(toggle_token, pattern="^toggle_"))
-app.add_handler(CallbackQueryHandler(pause_all, pattern="^pause_all$"))
-app.add_handler(CallbackQueryHandler(resume_all, pattern="^resume_all$"))
+telegram_app.add_handler(conv_handler)
+telegram_app.add_handler(CommandHandler("add", add_token))
+telegram_app.add_handler(CommandHandler("delete", delete_token))
+telegram_app.add_handler(CommandHandler("reset", reset))
+telegram_app.add_handler(CommandHandler("settings", settings))
+telegram_app.add_handler(CommandHandler("help", help_command))
+telegram_app.add_handler(CallbackQueryHandler(toggle_token, pattern="^toggle_"))
+telegram_app.add_handler(CallbackQueryHandler(pause_all, pattern="^pause_all$"))
+telegram_app.add_handler(CallbackQueryHandler(resume_all, pattern="^resume_all$"))
 
+# --------------------- MAIN ---------------------
 nest_asyncio.apply()
 
 async def main():
     print("✅ Giorno Sandwich Bot & Webhook démarrés")
     asyncio.create_task(simulate_sandwich_trading())
-    asyncio.create_task(app.run_polling())
-    config = uvicorn.Config(api, host="0.0.0.0", port=8000, loop="asyncio")  # ← use `api` ici
+    asyncio.create_task(telegram_app.run_polling())
+    config = uvicorn.Config(api, host="0.0.0.0", port=8000, loop="asyncio")
     server = uvicorn.Server(config)
     await server.serve()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
  
