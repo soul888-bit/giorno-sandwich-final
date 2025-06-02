@@ -8,7 +8,10 @@ import ssl
 import certifi
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes, ConversationHandler
+)
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -34,6 +37,7 @@ ssl_context = ssl.create_default_context(cafile=certifi.where())
 # FastAPI app
 api = FastAPI()
 
+
 @api.post("/webhook")
 async def webhook_listener(request: Request):
     body = await request.json()
@@ -53,7 +57,8 @@ async def webhook_listener(request: Request):
                     await send_alert(message)
     return JSONResponse(content={"status": "ok"})
 
-# Fonction d’envoi d’alerte Telegram
+
+# Envoi alerte Telegram
 async def send_alert(message: str):
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -64,7 +69,8 @@ async def send_alert(message: str):
         }
         await session.post(url, json=payload)
 
-# Simulation
+
+# Simulation d'opportunités
 async def simulate_sandwich_trading():
     while True:
         await asyncio.sleep(30)
@@ -78,15 +84,18 @@ async def simulate_sandwich_trading():
                     )
                     await send_alert(message)
 
+
 # Handlers Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         *[[InlineKeyboardButton(f"{token} : {'ON' if info['active'] else 'OFF'}", callback_data=f"toggle_{token}")]
-          for token, info in watched_tokens.items()],
-        [InlineKeyboardButton("Pause All", callback_data="pause_all"), InlineKeyboardButton("Resume All", callback_data="resume_all")],
+           for token, info in watched_tokens.items()],
+        [InlineKeyboardButton("Pause All", callback_data="pause_all"),
+         InlineKeyboardButton("Resume All", callback_data="resume_all")],
         [InlineKeyboardButton("/settings", callback_data="settings")]
     ]
     await update.message.reply_text("🎛 Menu principal :", reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -102,6 +111,7 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Réglages :", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECTING_SETTING
 
+
 async def setting_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -116,6 +126,7 @@ async def setting_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(messages[query.data])
     return SELECTING_SETTING
 
+
 async def set_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = context.user_data.get('setting_to_change')
     value = update.message.text
@@ -126,6 +137,7 @@ async def set_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Entrée invalide.")
     return ConversationHandler.END
 
+
 async def add_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
         await update.message.reply_text("Usage : /add <token_address>")
@@ -133,6 +145,7 @@ async def add_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = context.args[0]
     watched_tokens[token] = {"active": True}
     await update.message.reply_text(f"✅ Token ajouté à la surveillance : {token}")
+
 
 async def delete_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
@@ -145,16 +158,20 @@ async def delete_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Token non trouvé.")
 
+
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     watched_tokens.clear()
     await update.message.reply_text("🔁 Surveillance réinitialisée.")
+
 
 async def toggle_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = update.callback_query.data.replace("toggle_", "")
     if token in watched_tokens:
         watched_tokens[token]["active"] = not watched_tokens[token]["active"]
-        await update.callback_query.answer(f"{token} {'activé' if watched_tokens[token]['active'] else 'désactivé'}")
+        await update.callback_query.answer(
+            f"{token} {'activé' if watched_tokens[token]['active'] else 'désactivé'}")
     await start(update, context)
+
 
 async def pause_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for token in watched_tokens:
@@ -162,11 +179,13 @@ async def pause_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer("⏸ Tous les tokens mis en pause")
     await start(update, context)
 
+
 async def resume_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for token in watched_tokens:
         watched_tokens[token]["active"] = True
     await update.callback_query.answer("▶️ Tous les tokens réactivés")
     await start(update, context)
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -179,14 +198,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text)
 
-# Application Telegram
+# Telegram App
 telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 conv_handler = ConversationHandler(
-    entry_points=[
-        CommandHandler("start", start),
-        CallbackQueryHandler(settings, pattern="^settings$")
-    ],
+    entry_points=[CommandHandler("start", start), CallbackQueryHandler(settings, pattern="^settings$")],
     states={
         SELECTING_SETTING: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, set_value),
@@ -206,6 +222,7 @@ telegram_app.add_handler(CallbackQueryHandler(toggle_token, pattern="^toggle_"))
 telegram_app.add_handler(CallbackQueryHandler(pause_all, pattern="^pause_all$"))
 telegram_app.add_handler(CallbackQueryHandler(resume_all, pattern="^resume_all$"))
 
+# Démarrage global
 nest_asyncio.apply()
 
 async def main():
@@ -215,6 +232,9 @@ async def main():
     config = uvicorn.Config(api, host="0.0.0.0", port=8000, loop="asyncio")
     server = uvicorn.Server(config)
     await server.serve()
+
+# Railway cherche la variable "app" dans main.py
+app = api
 
 if __name__ == "__main__":
     asyncio.run(main())
