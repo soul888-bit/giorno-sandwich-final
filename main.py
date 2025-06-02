@@ -48,7 +48,7 @@ async def send_alert(message: str):
 app = FastAPI()
 
 
-@api.post("/webhook")
+@app.post("/webhook")
 async def webhook_listener(request: Request):
     body = await request.json()
     print("📥 Webhook reçu :", json.dumps(body, indent=2))
